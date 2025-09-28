@@ -1,0 +1,215 @@
+---
+title: "Assignment 2"
+author: "Kaustav Kesher"
+date: "2025-09-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load the libraries needed for kNN and data processing
+library(class)    # kNN function
+library(caret)    # data partitioning, preprocessing, and evaluation tools
+library(dplyr)    # easier data manipulation
+```
+
+
+#Load the Data
+
+```{r}
+# Read the dataset from the provided path
+bank_data <- read.csv("C:\\Users\\kaust\\Downloads\\UniversalBank.csv")
+
+# Take a quick look at the structure and summary
+str(bank_data)     # shows variables and data types
+summary(bank_data) # gives min, max, mean, etc. for each variable
+
+```
+#Data Preparation
+```{r}
+# Remove ID and ZIP.Code since they are not useful for prediction
+bank_data <- bank_data %>% select(-ID, -ZIP.Code)
+
+# Convert Personal.Loan into a categorical variable (factor)
+bank_data$Personal.Loan <- as.factor(bank_data$Personal.Loan)
+
+# Check the first few rows of the cleaned dataset
+head(bank_data)
+
+```
+#Create Training and Validation Sets (60:40 split)
+```{r}
+set.seed(123)  # for reproducibility so results don’t change randomly
+
+# Partition data into 60% training and 40% validation
+train_index <- createDataPartition(bank_data$Personal.Loan, p = 0.6, list = FALSE)
+training_set <- bank_data[train_index, ]
+validation_set <- bank_data[-train_index, ]
+
+# Display the dimensions of each set
+dim(training_set)
+dim(validation_set)
+
+```
+#Normalize Predictors
+```{r}
+# Separate predictors (X) and target (y)
+x_train <- training_set %>% select(-Personal.Loan)
+x_valid <- validation_set %>% select(-Personal.Loan)
+y_train <- training_set$Personal.Loan
+y_valid <- validation_set$Personal.Loan
+
+# Normalize predictors so all variables are on the same scale
+preproc <- preProcess(x_train, method = c("center", "scale"))
+x_train_norm <- predict(preproc, x_train)
+x_valid_norm <- predict(preproc, x_valid)
+
+
+
+```
+
+#Q1: Classify a Given Customer (k = 1)
+```{r}
+# Define customer profile (from assignment instructions)
+new_customer <- data.frame(
+  Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2,
+  Education = 2, Mortgage = 0, Securities.Account = 0,
+  CD.Account = 0, Online = 1, CreditCard = 1
+)
+
+# Scale new customer using same preprocessing as training set
+new_customer_scaled <- predict(preproc, new_customer)
+
+# Perform kNN classification with k = 1
+knn_pred_k1 <- knn(train = x_train_norm, test = new_customer_scaled,
+                   cl = y_train, k = 1)
+
+knn_pred_k1  # Output: "0" (reject) or "1" (accept)
+
+
+#Interpretation: With k=1, the decision depends only on the closest neighbor, which can be noisy.
+
+```
+
+
+
+#Q2: Find Best k (balance between overfitting and underfitting)
+
+```{r}
+# Try different odd values of k (1, 3, 5, … 25)
+k_values <- seq(1, 25, 2)
+acc <- c()
+
+for (k in k_values) {
+  pred <- knn(train = x_train_norm, test = x_valid_norm, cl = y_train, k = k)
+  acc <- c(acc, mean(pred == y_valid))  # store accuracy
+}
+
+# Combine results
+results <- data.frame(k = k_values, Accuracy = acc)
+results
+
+# Pick k with highest accuracy
+best_k <- k_values[which.max(acc)]
+best_k
+
+
+#Interpretation:
+
+#Small k - high variance (overfitting).
+
+#Large k - high bias (underfitting).
+
+#The chosen best_k gives the highest validation accuracy.
+
+```
+#Q3: Confusion Matrix with Best k
+```{r}
+# Predict on validation set using best_k
+final_pred <- knn(train = x_train_norm, test = x_valid_norm, cl = y_train, k = best_k)
+
+# Confusion matrix shows TP, TN, FP, FN
+confusionMatrix(final_pred, y_valid, positive = "1")
+
+#Interpretation: This helps evaluate model performance beyond accuracy (sensitivity, specificity).
+
+```
+
+#Q4: Classify Same Customer with Best k
+```{r}
+# Reclassify given customer with best_k
+knn_pred_best <- knn(train = x_train_norm, test = new_customer_scaled,
+                     cl = y_train, k = best_k)
+
+knn_pred_best  # More reliable than k=1
+
+```
+
+
+#Q5: Repartition into Training (50%), Validation (30%), Test (20%)
+
+```{r}
+set.seed(456)
+
+# Step 1: Split 50% for training
+train_index2 <- createDataPartition(bank_data$Personal.Loan, p = 0.5, list = FALSE)
+train_set2 <- bank_data[train_index2, ]
+temp_set <- bank_data[-train_index2, ]
+
+# Step 2: From remaining 50%, take 60% as validation and 40% as test (=> 30% + 20%)
+valid_index2 <- createDataPartition(temp_set$Personal.Loan, p = 0.6, list = FALSE)
+valid_set2 <- temp_set[valid_index2, ]
+test_set2 <- temp_set[-valid_index2, ]
+
+# Separate predictors/target
+x_train2 <- train_set2 %>% select(-Personal.Loan)
+x_valid2 <- valid_set2 %>% select(-Personal.Loan)
+x_test2  <- test_set2 %>% select(-Personal.Loan)
+
+y_train2 <- train_set2$Personal.Loan
+y_valid2 <- valid_set2$Personal.Loan
+y_test2  <- test_set2$Personal.Loan
+
+# Normalize again
+preproc2 <- preProcess(x_train2, method = c("center", "scale"))
+x_train2_norm <- predict(preproc2, x_train2)
+x_valid2_norm <- predict(preproc2, x_valid2)
+x_test2_norm  <- predict(preproc2, x_test2)
+
+# Predictions for all sets
+pred_train <- knn(train = x_train2_norm, test = x_train2_norm, cl = y_train2, k = best_k)
+pred_valid <- knn(train = x_train2_norm, test = x_valid2_norm, cl = y_train2, k = best_k)
+pred_test  <- knn(train = x_train2_norm, test = x_test2_norm, cl = y_train2, k = best_k)
+
+# Confusion matrices
+confusionMatrix(pred_train, y_train2, positive = "1")
+confusionMatrix(pred_valid, y_valid2, positive = "1")
+confusionMatrix(pred_test, y_test2, positive = "1")
+
+
+#Interpretation:
+
+#Training accuracy is usually highest.
+
+#Validation accuracy is used for tuning.
+
+#Test accuracy shows final generalization ability.
+```
+
+
+#Conclusion
+
+#kNN was applied to classify loan acceptance.
+
+#Best k was chosen using validation accuracy.
+
+#Confusion matrices highlighted trade-offs between overfitting and underfitting.
+
+#The final 3-way split showed how the model performs across different data subsets.
+
+
+
+
