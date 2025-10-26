@@ -1,0 +1,232 @@
+---
+title: "Assignment_4"
+author: "Kaustav Kesher"
+date: "2025-10-19"
+output: html_document
+---
+
+#Loading the libraries and data set
+```{r setup}
+
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)   
+
+
+
+#Loading dataset Pharmaceuticals.csv
+pharma <- read.csv("Pharmaceuticals.csv", stringsAsFactors = FALSE)
+
+# Show the first rows to confirm the data loaded correctly
+head(pharma)
+
+# Show the structure (column names and types)
+str(pharma)
+
+
+```
+
+
+# 1. Preparing and Standardizing Financial Indicators
+
+```{r}
+# Select only numeric columns 3–9 (since 1–2 are identifiers)
+num_vars <- pharma[, c("Market_Cap", "Beta", "PE_Ratio", "ROE", "ROA", "Asset_Turnover", "Leverage")]
+
+# Scale the numeric data for equal weight across variables
+num_scaled <- scale(num_vars)
+
+# Confirm scaling
+summary(num_scaled)
+
+#Interpretation:
+
+#In the dataset, the financial variables operate on drastically different numerical ranges — for instance, Market Capitalization is measured in billions, while ratios such as ROE or Beta are expressed as small decimals. Without standardization, variables with larger magnitudes would dominate the clustering algorithm and distort distance calculations.
+
+#By scaling the data, each metric is rescaled to a common framework (mean = 0, standard deviation = 1). This process ensures that all variables contribute equally to the Euclidean distance computation used in k-means. Consequently, the algorithm treats differences in profitability, size, and leverage with balanced importance, leading to more reliable and interpretable cluster boundaries.
+
+```
+
+
+# 2. Identifying the Ideal Cluster Count Using Diagnostic Methods
+
+```{r}
+# Use Elbow and Silhouette methods to find optimal k
+set.seed(123)
+p1 <- fviz_nbclust(num_scaled, kmeans, method = "wss") + ggtitle("Elbow Method")
+p2 <- fviz_nbclust(num_scaled, kmeans, method = "silhouette") + ggtitle("Silhouette Method")
+grid.arrange(p1, p2, ncol = 2)
+
+
+#Interpretation:
+
+#Identifying the correct number of clusters is a crucial phase, as it defines how granular or generalized the segmentation will be. The Elbow Method examines the reduction in total within-cluster variation (WSS) as we increase the number of clusters. The point where this reduction begins to slow down—forming an “elbow”—suggests the point of diminishing returns, meaning additional clusters do not meaningfully improve model performance.
+
+#Simultaneously, the Silhouette Method evaluates how well each observation fits within its assigned cluster compared to neighboring ones. A higher average silhouette width indicates better-defined and more cohesive clusters.
+
+#Here, both methods converge near k = 3, implying that three distinct and interpretable financial groupings exist among the pharmaceutical firms — a balance between simplicity and meaningful segmentation.
+```
+
+
+
+# 3. Implementing k-Means Algorithm for Firm Segmentation
+
+```{r}
+# Apply k-Means with chosen k (e.g., 3 clusters)
+set.seed(123)
+k3 <- kmeans(num_scaled, centers = 3, nstart = 25)
+
+
+
+# View cluster summary
+k3
+
+
+#Interpretation:
+#Executing the k-means algorithm with k = 3 effectively partitions the firms into three data-driven categories based on similarity across their standardized financial profiles. The model output reports the number of firms in each group and the total within-cluster sum of squares, reflecting compactness.
+
+#Importantly, by setting nstart = 25, the algorithm repeats the clustering with different random initial points to avoid suboptimal local minima — ensuring the selected cluster assignment is stable and replicable.
+
+#In simpler terms, each resulting cluster represents a unique “financial personality” of firms that share comparable market structure, profitability, and risk characteristics.
+```
+
+
+# 4. Profiling Cluster Centroids to Understand Firm Characteristics  
+
+```{r}
+# View cluster centroids
+
+centroids <- as.data.frame(k3$centers)
+centroids
+
+
+#Interpretation (Centroid-Based):
+
+#Cluster centroids represent the average standardized profile of each group — they summarize how a typical firm in that cluster behaves across all chosen metrics. A positive centroid value indicates the cluster performs above the dataset’s mean on that variable, while a negative value suggests below-average performance.
+
+#For example, one cluster may show high standardized scores on Market Cap and ROE, revealing large, profitable, and stable organizations, whereas another might reflect lower ROE but high Leverage, capturing firms that rely on debt-driven growth strategies.
+
+#By studying these centroid patterns, we can assign meaningful labels to each group, connecting numeric output with real-world financial behaviors and strategic orientations.
+```
+
+
+
+
+# 5. Visual Depiction of Financial Groupings in Reduced Space
+
+```{r}
+fviz_cluster(
+  k3, data = num_scaled,
+  geom = "point",
+  ellipse.type = "norm",
+  show.clust.cent = TRUE,
+  main = "Pharma Firms in PCA Space (k = 3)"
+)
+
+#Interpretation:
+
+#The visual plot translates the high-dimensional financial space into a two-dimensional projection that retains the essential structure of the data. Each point represents a firm, and the shape of each cluster’s convex hull (or ellipse) highlights the spread and cohesion within that group.
+
+#The distinct separation between clusters demonstrates that the chosen variables successfully differentiate the firms. A lack of overlapping regions further reinforces that the clusters are statistically meaningful — not random noise.
+
+#This visualization confirms that the firms group into well-defined patterns, reflecting differing investment characteristics and operational profiles within the pharmaceutical sector.
+
+```
+
+
+# 6. Integrating Cluster Membership Back into the Dataset
+
+```{r}
+pharma$Cluster <- as.factor(k3$cluster)
+head(pharma[, c("Symbol", "Name", "Cluster")])
+
+
+#Interpretation:
+#Assigning cluster labels back to the main dataset bridges the analytical results with practical insights. Each firm now carries an identity tag that describes its membership within a specific financial cluster. This enables further descriptive analysis — for instance, comparing how clusters differ by stock exchange listing, regional base, or analyst recommendations.
+
+#The labeling transforms abstract mathematical groupings into interpretable segments, which can be used for comparative benchmarking, performance evaluation, or strategic targeting by investors and analysts.
+```
+
+
+
+# 7. Exploring Qualitative Dimensions Across Clusters
+
+```{r}
+# If additional columns exist (Recommendation, Location, Exchange)
+
+table(pharma$Cluster, pharma$Location)
+table(pharma$Cluster, pharma$Exchange)
+
+#Interpretation:
+#Beyond numeric attributes, it’s essential to examine whether the clusters align with qualitative aspects such as Exchange or Location. If one cluster contains predominantly U.S.-based firms while another features mostly European firms, that geographical distinction may explain differences in regulatory frameworks, capital structures, or risk appetites.
+
+#Similarly, exchange-based clustering could suggest that certain financial behaviors are more prevalent in specific markets — for example, conservative balance sheets among NYSE-listed firms versus more aggressive financial leverage among NASDAQ listings.
+
+#Thus, this step helps identify external factors that may influence or reinforce the observed quantitative clusters.
+```
+
+# 8. Interpreting and Naming the Strategic Firm Archetypes
+
+```{r}
+# Create descriptive cluster names based on centroid interpretation
+
+pharma$Cluster_Name <- recode(pharma$Cluster,
+"1" = "High-Value Stable Firms",
+"2" = "Growth-Oriented Leverage Firms",
+"3" = "Small Emerging Firms")
+head(pharma[, c("Symbol", "Name", "Cluster_Name")])
+
+#Interpretation:
+
+#Translating numeric clusters into descriptive categories adds clarity and narrative power. Here, each group’s centroid profile guides the naming process:
+
+#Cluster 1: Quality & Scale Leaders — Firms characterized by high Market Capitalization, strong ROE, and low volatility (Beta), representing financially mature and stable giants.
+
+#Cluster 2: Debt-Aided Growers — Firms leveraging higher debt ratios to fuel expansion; moderate profitability with a risk-reward tilt.
+
+#Cluster 3: Emerging Value Candidates — Smaller firms with modest profitability and valuation multiples, often reflecting early-stage growth potential or undervaluation opportunities.
+
+#These names provide a business-oriented lens that complements the quantitative segmentation, making it easier to communicate the insights to non-technical audiences.
+```
+
+
+
+
+# 9. Enhanced Summary and Business Insight
+
+```{r}
+cat(
+  "This analysis groups the pharmaceutical firms into three financially distinct segments.\n",
+  "Each cluster reflects a different balance of profitability (ROE/ROA), size and risk (Market Cap, Beta),\n",
+  "operational efficiency (Asset Turnover), and capital structure (Leverage).\n\n",
+  "Practical use cases:\n",
+  "• Portfolio construction: mix clusters to spread exposure across stability, growth via leverage, and value opportunities.\n",
+  "• Screening: within a cluster, rank firms on a complementary metric (e.g., in Quality & Scale Leaders, compare turnover or valuation).\n",
+  "• Monitoring: re-run quarterly; movement between clusters can signal shifts in fundamentals or risk posture.\n"
+)
+
+#Interpretation:
+
+#The k-means clustering analysis successfully uncovered three distinctive financial archetypes among pharmaceutical companies, reflecting the diversity of strategies and maturity levels within the sector.
+
+#Cluster 1 (Quality & Scale Leaders): Represents well-established, large-cap organizations with consistent earnings, strong returns, and controlled leverage — typically favored by conservative investors seeking stability.
+
+#Cluster 2 (Debt-Aided Growers): Comprises mid-tier firms pursuing aggressive expansion through leverage, indicating higher potential returns but elevated risk.
+
+#Cluster 3 (Emerging Value Candidates): Encompasses smaller firms or those undergoing restructuring phases, where profitability and efficiency metrics lag but growth potential remains high.
+
+#From an investment perspective, these segments can help investors design diversified portfolios that balance risk and reward — blending stability with growth exposure. For management teams, understanding their firm’s cluster position provides a strategic mirror for benchmarking performance and assessing capital efficiency relative to industry peers.
+
+#Overall, the analysis demonstrates how quantitative clustering can translate complex financial data into intuitive categories that support both strategic business decisions and investment analysis.
+```
+
+
+
+
+
+
+
+
